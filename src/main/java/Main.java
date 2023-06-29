@@ -47,7 +47,7 @@ public class Main {
 
     JsonObject afterJsonPayload;
     ArrayList<String> columns = new ArrayList<>(); // A list of column names for the specific source table.
-    DataClassLibrary dataClassLibrary; // Ripcurrent will attempt to parse an existing IRI data class library when its path is specified as a Java property to the application.
+    DataClassRuleLibrary dataClassRuleLibrary; // Ripcurrent will attempt to parse an existing IRI data class library when its path is specified as a Java property to the application.
     String dataTargetProcessType; // Process type for the data target.
     String dataTargetSchema; // Schema for the data target (if using ODBC).
     String dataTargetSeparator; // Separator to place in the SortCL script for the data target.
@@ -57,7 +57,6 @@ public class Main {
     JsonObject jsonObject; // The Debezium change event is in JSON.
     String postfixTableName; // Target postfix string.
     Properties props; // Java configuration properties.
-    RulesLibrary rulesLibrary; // Ripcurrent will attempt to parse an existing IRI rules library when its path is specified as a Java property to the application.
     String structureChangeEventLogPath;
     String DSN;
 
@@ -142,10 +141,8 @@ public class Main {
         // Set a few default properties - SortCL is expecting string representations of values.
         props.setProperty("decimal.handling.mode", "string");
         props.setProperty("binary.handling.mode", "base64");
-        RulesLibrary rulesLibrary = new RulesLibrary(props.getProperty(RULES_LIBRARY_PROPERTY_NAME));
-        DataClassLibrary dataClassLibrary = new DataClassLibrary(props.getProperty(DATA_CLASS_LIBRARY_PROPERTY_NAME), rulesLibrary.getRules());
-        m.setDataClassLibrary(dataClassLibrary);
-        m.setRulesLibrary(rulesLibrary);
+        DataClassRuleLibrary dataClassRuleLibrary = new DataClassRuleLibrary(props.getProperty(DATA_CLASS_LIBRARY_PROPERTY_NAME));
+        m.setDataClassLibrary(dataClassRuleLibrary);
         m.setProps(props);
         m.getI().set(0);
         String dataTargetProcessTypePropertyValue = m.getProps().getProperty(DATA_TARGET_PROCESS_TYPE_PROPERTY_NAME);
@@ -304,7 +301,7 @@ public class Main {
 
                                     } catch (IOException IoError) {
                                         String timeStamp = new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new java.util.Date());
-                                        System.out.println(String.format("%s: WARNING: Unable to write to database change event log '%s'.", timeStamp, m.getStructureChangeEventLogPath()));
+                                        System.out.printf("%s: WARNING: Unable to write to database change event log '%s'.%n", timeStamp, m.getStructureChangeEventLogPath());
                                     }
                                 }
                             }
@@ -348,10 +345,10 @@ public class Main {
     }
 
     // Applying rules to columns based on data classes.
-    public static void classify(Set<Map.Entry<String, JsonElement>> values, DataClassLibrary dataClassLibrary, ArrayList<SclField> fields) {
+    public static void classify(Set<Map.Entry<String, JsonElement>> values, DataClassRuleLibrary dataClassRuleLibrary, ArrayList<SclField> fields) {
         int count = 0;
         for (Map.Entry<String, JsonElement> value : values) {
-            for (Map.Entry<Map<String, Rule>, DataClassMatcher> entry : dataClassLibrary.dataMatcherMap.entrySet()) {
+            for (Map.Entry<Map<String, Rule>, DataClassMatcher> entry : dataClassRuleLibrary.dataMatcherMap.entrySet()) {
                 if (entry.getValue().getDataMatcher().isMatch(value.getValue().getAsString()) || entry.getValue().getNameMatcher().isMatch(fields.get(count).name)) {
                     fields.get(count).expressionApplied = true;
                     Rule rule = (Rule) entry.getKey().values().toArray()[0];
@@ -405,17 +402,13 @@ public class Main {
                     loopTrack++;
                     continue;
                 }
-                switch (type) {
-                    case "int32":
-                        if (name == null) {
-                            scripts.get().get(m.getI().get().toString()).getFields().get(loopTrack).setDataType("NUMERIC");
-                            scripts.get().get(m.getI().get().toString()).getFields().get(loopTrack).setPrecision(0);
-                        } else {
-                            scripts.get().get(m.getI().get().toString()).getFields().get(loopTrack).setDataType("ISO_DATE");
-                        }
-                        break;
-                    default:
-
+                if (type.equals("int32")) {
+                    if (name == null) {
+                        scripts.get().get(m.getI().get().toString()).getFields().get(loopTrack).setDataType("NUMERIC");
+                        scripts.get().get(m.getI().get().toString()).getFields().get(loopTrack).setPrecision(0);
+                    } else {
+                        scripts.get().get(m.getI().get().toString()).getFields().get(loopTrack).setDataType("ISO_DATE");
+                    }
                 }
                 loopTrack++;
             }
@@ -583,12 +576,12 @@ public class Main {
         this.columns = columns;
     }
 
-    public DataClassLibrary getDataClassLibrary() {
-        return dataClassLibrary;
+    public DataClassRuleLibrary getDataClassLibrary() {
+        return dataClassRuleLibrary;
     }
 
-    public void setDataClassLibrary(DataClassLibrary dataClassLibrary) {
-        this.dataClassLibrary = dataClassLibrary;
+    public void setDataClassLibrary(DataClassRuleLibrary dataClassRuleLibrary) {
+        this.dataClassRuleLibrary = dataClassRuleLibrary;
     }
 
     public String getDataTargetProcessType() {
@@ -653,14 +646,6 @@ public class Main {
 
     public void setProps(Properties props) {
         this.props = props;
-    }
-
-    public RulesLibrary getRulesLibrary() {
-        return rulesLibrary;
-    }
-
-    public void setRulesLibrary(RulesLibrary rulesLibrary) {
-        this.rulesLibrary = rulesLibrary;
     }
 
     public FileOutputStream getFileOutputStream() {
